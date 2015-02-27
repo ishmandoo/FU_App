@@ -10,6 +10,8 @@ import android.os.AsyncTask;
 import android.preference.PreferenceManager;
 import android.util.Log;
 
+import com.google.android.gms.common.ConnectionResult;
+import com.google.android.gms.common.GooglePlayServicesUtil;
 import com.google.android.gms.gcm.GoogleCloudMessaging;
 import com.google.gson.Gson;
 import com.squareup.okhttp.Callback;
@@ -28,22 +30,17 @@ import java.net.CookiePolicy;
 import java.util.Arrays;
 import java.util.HashSet;
 
-/**
- * An {@link IntentService} subclass for handling asynchronous task requests in
- * a service on a separate handler thread.
- * <p/>
- * TODO: Customize class - update intent actions, extra parameters and static
- * helper methods.
- */
+
 public class NetworkService extends IntentService {
     private static String TAG = NetworkService.class.getSimpleName();
-    // TODO: Rename actions, choose action names that describe tasks that this
     // IntentService can perform, e.g. ACTION_FETCH_NEW_ITEMS
+    private final static int PLAY_SERVICES_RESOLUTION_REQUEST = 9000;
+
     private static final String ACTION_LOG_IN = "com.the_final_empire.fuapp.action.log_in";
     private static final String ACTION_UPDATE_FRIENDS = "com.the_final_empire.fuapp.action.update_friends";
     private static final String ACTION_FUCK = "com.the_final_empire.fuapp.action.FUCK";
 
-    // TODO: Rename parameters
+
     private static final String EXTRA_USERNAME = "com.the_final_empire.fuapp.extra.USERNAME";
     private static final String EXTRA_PASSWORD = "com.the_final_empire.fuapp.extra.PASSWORD";
     public static final String EXTRA_FRIEND_ARRAY = "com.the_final_empire.fuapp.extra.FRIEND_ARRAY";
@@ -146,7 +143,11 @@ public class NetworkService extends IntentService {
      * parameters.
      */
     private void handleActionLogIn(String username, String password) throws IOException {
-        logIn(username, password);
+        if (logIn(username, password)){
+            register();
+            Intent loggedIn = new Intent(BROADCAST_LOGGED_IN);
+            this.sendBroadcast(loggedIn);
+        }
     }
 
     /**
@@ -184,41 +185,87 @@ public class NetworkService extends IntentService {
         fu(friendName);
     }
 
-    void logIn(final String username, final String password) throws IOException {
-        Log.i(TAG, "Log in function start " + username);
-        RequestBody formBody = new FormEncodingBuilder()
-                .add("username", username)
-                .add("password", password)
-                .build();
-        Request request = new Request.Builder()
-                .url("http://quiet-taiga-6899.herokuapp.com/login")
-                .post(formBody)
-                .build();
-        Response response = mClient.newCall(request).execute();
+    boolean logIn(final String username, final String password) throws IOException {
+        if (!checkLogIn()) {
+            Log.i(TAG, "Log in function start " + username);
+            RequestBody formBody = new FormEncodingBuilder()
+                    .add("username", username)
+                    .add("password", password)
+                    .build();
+            Request request = new Request.Builder()
+                    .url("http://quiet-taiga-6899.herokuapp.com/login")
+                    .post(formBody)
+                    .build();
+            Response response = mClient.newCall(request).execute();
 
-        if (response.isSuccessful()) {
+            if (response.isSuccessful()) {
 
-            SharedPreferences sharedPrefs = PreferenceManager.getDefaultSharedPreferences(this);
+                SharedPreferences sharedPrefs = PreferenceManager.getDefaultSharedPreferences(this);
 
-            SharedPreferences.Editor editor = sharedPrefs.edit();
-            Log.i(TAG, "Login successful " + username);
-            editor.putString("username", username);
-            editor.putString("password", password);
-            editor.putBoolean("is_user_saved",true);
-            editor.commit();
+                SharedPreferences.Editor editor = sharedPrefs.edit();
+                Log.i(TAG, "Login successful " + username);
+                editor.putString("username", username);
+                editor.putString("password", password);
+                editor.putBoolean("is_user_saved", true);
+                editor.commit();
 
-            register();
+                return true;
+            } else {
+                return false;
+            }
+        } else {
+            return true;
         }
 
+
+    }
+
+    boolean checkLogIn() throws IOException{
+        Request request = new Request.Builder()
+                .url("http://quiet-taiga-6899.herokuapp.com/loggedIn")
+                .get()
+                .build();
+        Response response = mClient.newCall(request).execute();
+        if (response.isSuccessful()) {
+            return true;
+        } else {
+            return false;
+        }
     }
 
 
     private void register() throws IOException {
         Log.i(TAG, "Register function start");
 
-        regid = gcm.register(SENDER_ID);
-        registerId();
+        if (checkPlayServices()) {
+            gcm = GoogleCloudMessaging.getInstance(this);
+            regid = getRegistrationId();
 
+            if (regid.isEmpty()) {
+                regid = gcm.register(SENDER_ID);
+
+
+                final SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(this);
+                SharedPreferences.Editor editor = prefs.edit();
+                editor.putString("regid", regid);
+                editor.commit();
+
+                registerId();
+            }
+        } else {
+            Log.i(TAG, "No valid Google Play Services APK found.");
+        }
+
+    }
+
+    private String getRegistrationId() {
+        final SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(this);
+        String registrationId = prefs.getString("regid", "");
+        if (registrationId.isEmpty()) {
+            Log.i(TAG, "Registration not found.");
+            return "";
+        }
+        return registrationId;
     }
 
     void registerId() throws IOException{
@@ -231,10 +278,15 @@ public class NetworkService extends IntentService {
         Response response = mClient.newCall(request).execute();
 
         if (response.isSuccessful()) {
-
-            Intent loggedIn = new Intent(BROADCAST_LOGGED_IN);
-            this.sendBroadcast(loggedIn);
         }
+    }
+
+    private boolean checkPlayServices() {
+        int resultCode = GooglePlayServicesUtil.isGooglePlayServicesAvailable(this);
+        if (resultCode != ConnectionResult.SUCCESS) {
+            return false;
+        }
+        return true;
     }
 
 

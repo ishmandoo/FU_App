@@ -24,7 +24,7 @@ public class GCMReceiver extends BroadcastReceiver {
         Log.i(TAG, "Fuck you received from " + intent.getStringExtra("friendName"));
 
         NotificationCompat.Builder mBuilder = new NotificationCompat.Builder(context)
-                .setSmallIcon(R.drawable.ic_launcher)
+                .setSmallIcon(R.mipmap.ic_launcher)
                 .setVibrate(new long[] {0, 300, 200, 300})
                 .setContentTitle(friendName + " says fuck you!")
                 .setContentText(friendName + " says fuck you!");
